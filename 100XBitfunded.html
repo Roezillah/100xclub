@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>100X CLUB BITFUNDED CHEAT SHEET</title>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { emerald: { 500: '#10b981' } } } }
+        };
+    </script>
+    <style type="text/tailwindcss">
+        @layer base { 
+            body { @apply bg-zinc-50 dark:bg-[#0A0A0B] text-zinc-900 dark:text-zinc-100 antialiased transition-colors duration-300; font-family: 'Inter', sans-serif; } 
+            input[type="number"], input[type="text"], input[type="date"], select { 
+                @apply bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-emerald-500 transition-colors w-full text-zinc-900 dark:text-white; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        (function() {
+            var checkInterval = setInterval(function() {
+                if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined') {
+                    clearInterval(checkInterval);
+                    initializeApp();
+                }
+            }, 100);
+
+            function initializeApp() {
+                const html = htm.bind(React.createElement);
+                const { useState, useEffect, useMemo, useRef } = React;
+
+                const Icon = ({ name, className = "w-4 h-4" }) => {
+                    const iconRef = useRef(null);
+                    useEffect(() => {
+                        if (window.lucide && iconRef.current) {
+                            iconRef.current.innerHTML = '';
+                            const i = document.createElement('i');
+                            i.setAttribute('data-lucide', name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase());
+                            i.className = className;
+                            iconRef.current.appendChild(i);
+                            window.lucide.createIcons();
+                        }
+                    }, [name, className]);
+                    return html`<span ref=${iconRef} className="inline-flex items-center justify-center" />`;
+                };
+
+                const DEFAULT_DATA = {
+                    initialAccountSize: 50000, maxLossPct: 6, maxDailyLossPct: 4, profitTargetPct: 10,
+                    feePerTradePct: 0.08, maxRiskPerTradePct: 0.25, leverage: 1, margin: 3000, slOnChartPct: 4,
+                };
+
+                function App() {
+                    const [trades, setTrades] = useState(() => JSON.parse(localStorage.getItem('bitfunded_trades_v19')) || []);
+                    const [data, setData] = useState(() => JSON.parse(localStorage.getItem('bitfunded_cheat_sheet_v19')) || DEFAULT_DATA);
+                    const [activeTab, setActiveTab] = useState('calculator');
+                    const [isModalOpen, setIsModalOpen] = useState(false);
+                    const [editingTrade, setEditingTrade] = useState(null);
+                    const [theme, setTheme] = useState(() => localStorage.getItem('bitfunded_theme') || 'dark');
+
+                    useEffect(() => {
+                        localStorage.setItem('bitfunded_cheat_sheet_v19', JSON.stringify(data));
+                        localStorage.setItem('bitfunded_trades_v19', JSON.stringify(trades));
+                        localStorage.setItem('bitfunded_theme', theme);
+                        document.documentElement.classList.toggle('dark', theme === 'dark');
+                    }, [data, trades, theme]);
+
+                    const stats = useMemo(() => {
+                        const realizedPnL = trades.reduce((acc, t) => t.outcome === 'Win' ? acc + t.amount : t.outcome === 'Loss' ? acc - t.amount : acc, 0);
+                        const activeRisk = trades.reduce((acc, t) => {
+                            if (t.outcome === 'Active') return acc + ((data.initialAccountSize + realizedPnL) * (data.maxRiskPerTradePct / 100));
+                            return acc;
+                        }, 0);
+                        return { realizedPnL, activeRisk };
+                    }, [trades, data.initialAccountSize, data.maxRiskPerTradePct]);
+
+                    const currentBalance = data.initialAccountSize + stats.realizedPnL;
+                    const currentEquity = currentBalance - stats.activeRisk;
+
+                    const performanceColor = useMemo(() => {
+                        if (stats.realizedPnL > 0) return 'text-emerald-600 dark:text-emerald-500';
+                        if (stats.realizedPnL < 0) return 'text-orange-500 dark:text-yellow-400';
+                        return 'text-zinc-900 dark:text-white';
+                    }, [stats.realizedPnL]);
+
+                    const calculations = useMemo(() => {
+                        const posSize = data.margin * data.leverage;
+                        const feeAmt = posSize * (data.feePerTradePct / 100);
+                        const riskAmount = currentBalance * (data.maxRiskPerTradePct / 100);
+                        const maxLossLimit = data.initialAccountSize * (data.maxLossPct / 100);
+                        return {
+                            maxLossAmount: maxLossLimit,
+                            dailyLimit: currentBalance * (data.maxDailyLossPct / 100),
+                            minBal: data.initialAccountSize - maxLossLimit,
+                            goal: data.initialAccountSize * (data.profitTargetPct / 100),
+                            slExcl: posSize * (data.slOnChartPct / 100),
+                            slIncl: (posSize * (data.slOnChartPct / 100)) + feeAmt,
+                            maxAllowedRisk: riskAmount,
+                            fees: feeAmt,
+                            tradesDaily: riskAmount > 0 ? Math.floor((currentBalance * (data.maxDailyLossPct / 100)) / riskAmount) : 0,
+                            tradesMax: riskAmount > 0 ? Math.floor((maxLossLimit + (currentBalance - data.initialAccountSize)) / riskAmount) : 0,
+                            isHighRisk: ((posSize * (data.slOnChartPct / 100)) + feeAmt) > riskAmount
+                        };
+                    }, [data, currentBalance]);
+
+                    const logStats = useMemo(() => {
+                        const completedTrades = trades.filter(t => t.outcome !== 'Active');
+                        const wins = completedTrades.filter(t => t.outcome === 'Win').length;
+                        const rrBreakdown = {};
+                        completedTrades.forEach(t => {
+                            if (!rrBreakdown[t.rr]) rrBreakdown[t.rr] = { wins: 0, total: 0 };
+                            rrBreakdown[t.rr].total++;
+                            if (t.outcome === 'Win') rrBreakdown[t.rr].wins++;
+                        });
+                        const rrStats = Object.keys(rrBreakdown).sort().map(rr => ({
+                            label: rr,
+                            rate: ((rrBreakdown[rr].wins / rrBreakdown[rr].total) * 100).toFixed(0) + '%'
+                        }));
+                        return { total: trades.length, winRate: completedTrades.length > 0 ? ((wins / completedTrades.length) * 100).toFixed(1) : "0.0", wins, rrStats };
+                    }, [trades]);
+
+                    const handleAddClick = (dateStr) => {
+                        setEditingTrade({ date: dateStr || new Date().toISOString().split('T')[0], pair: 'BTC', direction: 'Long', outcome: 'Active', rr: '1:1' });
+                        setIsModalOpen(true);
+                    };
+
+                    const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+
+                    return html`
+                        <div class="min-h-screen p-6 max-w-[1400px] mx-auto space-y-8">
+                            <header class="flex justify-between items-center">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20">
+                                        <${Icon} name="Calculator" class="text-emerald-600 dark:text-emerald-500 w-6 h-6" />
+                                    </div>
+                                    <h1 class="font-bold uppercase tracking-widest text-lg text-zinc-900 dark:text-white">100X CLUB BITFUNDED</h1>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <div class="flex bg-zinc-200 dark:bg-white/5 p-1 rounded-xl">
+                                        <button onClick=${() => setActiveTab('calculator')} class=${`px-6 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'calculator' ? 'bg-emerald-500 text-white' : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}>CALC</button>
+                                        <button onClick=${() => setActiveTab('log')} class=${`px-6 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'log' ? 'bg-emerald-500 text-white' : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}>LOG</button>
+                                    </div>
+                                    <button onClick=${() => setTheme(theme === 'dark' ? 'light' : 'dark')} class="p-2 bg-zinc-200 dark:bg-white/5 rounded-lg border-2 border-zinc-300 dark:border-white/10 transition-colors hover:border-emerald-500">
+                                        <${Icon} name=${theme === 'dark' ? 'Sun' : 'Moon'} class="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                                    </button>
+                                </div>
+                            </header>
+
+                            ${activeTab === 'calculator' ? html`
+                                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                    <div class="lg:col-span-3 space-y-8">
+                                        <section class="space-y-4">
+                                            <div class="flex items-center gap-2 text-zinc-500 uppercase text-[10px] font-bold tracking-[0.2em]"><${Icon} name="Layers" /> Account Configuration</div>
+                                            <${InputGroup} label="Initial Account Size" value=${data.initialAccountSize} onChange=${(v) => setData({...data, initialAccountSize: v})} />
+                                            <div class="grid grid-cols-1 gap-3">
+                                                <div class="p-4 bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 rounded-xl">
+                                                    <p class="text-[10px] text-zinc-500 uppercase font-bold tracking-widest mb-1">Current Balance</p>
+                                                    <p class=${`text-2xl font-bold tracking-tighter ${performanceColor}`}>${formatCurrency(currentBalance)}</p>
+                                                </div>
+                                                <div class="p-4 bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 rounded-xl">
+                                                    <div class="flex justify-between items-start">
+                                                        <p class="text-[10px] text-zinc-500 uppercase font-bold tracking-widest mb-1">Current Equity</p>
+                                                        ${stats.activeRisk > 0 && html`<span class="text-[8px] bg-blue-500/20 text-blue-600 dark:text-blue-400 px-1 rounded uppercase">Risk Deducted</span>`}
+                                                    </div>
+                                                    <p class=${`text-2xl font-bold tracking-tighter ${performanceColor}`}>${formatCurrency(currentEquity)}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+                                        <section class="space-y-4">
+                                            <div class="flex items-center gap-2 text-zinc-500 uppercase text-[10px] font-bold tracking-[0.2em]"><${Icon} name="Shield" /> Risk Parameters</div>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <${InputGroup} label="Max Loss (%)" value=${data.maxLossPct} onChange=${(v) => setData({...data, maxLossPct: v})} suffix="%" />
+                                                <${InputGroup} label="Daily Loss (%)" value=${data.maxDailyLossPct} onChange=${(v) => setData({...data, maxDailyLossPct: v})} suffix="%" />
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <${InputGroup} label="Profit Target (%)" value=${data.profitTargetPct} onChange=${(v) => setData({...data, profitTargetPct: v})} suffix="%" />
+                                                <${InputGroup} label="Fee (%)" value=${data.feePerTradePct} onChange=${(v) => setData({...data, feePerTradePct: v})} suffix="%" />
+                                            </div>
+                                            <${InputGroup} label="Max Risk / Trade (%)" value=${data.maxRiskPerTradePct} onChange=${(v) => setData({...data, maxRiskPerTradePct: v})} suffix="%" />
+                                        </section>
+                                        <section class="space-y-4">
+                                            <div class="flex items-center gap-2 text-zinc-500 uppercase text-[10px] font-bold tracking-[0.2em]"><${Icon} name="Zap" /> Risk Calculator</div>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <${InputGroup} label="Leverage (X)" value=${data.leverage} onChange=${(v) => setData({...data, leverage: v})} />
+                                                <${InputGroup} label="SL Chart (%)" value=${data.slOnChartPct} onChange=${(v) => setData({...data, slOnChartPct: v})} suffix="%" />
+                                            </div>
+                                            <${InputGroup} label="Margin" value=${data.margin} onChange=${(v) => setData({...data, margin: v})} />
+                                        </section>
+                                    </div>
+                                    <div class="lg:col-span-9 space-y-6">
+                                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                            <${StatCard} label="Max Loss" value=${formatCurrency(calculations.maxLossAmount)} icon="AlertTriangle" color="text-red-500" sub="6% Initial" />
+                                            <${StatCard} label="Min Balance" value=${formatCurrency(calculations.minBal)} icon="Shield" color="text-emerald-600 dark:text-emerald-500" sub="Hard stop" />
+                                            <${StatCard} label="Daily Max" value=${formatCurrency(calculations.dailyLimit)} icon="AlertTriangle" color="text-orange-500" sub="Bal: 4%" />
+                                            <${StatCard} label="Target" value=${formatCurrency(calculations.goal)} icon="Target" color="text-blue-600 dark:text-blue-500" sub="Goal: 10%" />
+                                        </div>
+                                        <div class="bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
+                                            <div class="px-6 py-4 border-b-2 border-zinc-200 dark:border-white/5 bg-zinc-50 dark:bg-white/[0.02] text-[11px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-2">
+                                                <${Icon} name="Info" class="text-emerald-600 dark:text-emerald-500" /> Trade Risk Analysis
+                                            </div>
+                                            <div class="divide-y-2 divide-zinc-200 dark:divide-white/5 px-6">
+                                                <${DataRow} label="Max Risk, SL / Trade (Incl Fees)" value=${formatCurrency(calculations.maxAllowedRisk)} subValue="0.25% of balance" />
+                                                <${DataRow} label="Daily Drawdown Trades" value=${calculations.tradesDaily} subValue="Consecutive trades" />
+                                                <${DataRow} label="Max Drawdown Trades" value=${calculations.tradesMax} subValue="Consecutive trades" />
+                                            </div>
+                                        </div>
+                                        <div class=${`p-10 border-2 rounded-2xl transition-all duration-500 relative ${calculations.isHighRisk ? 'bg-red-50 dark:bg-red-950/40 border-red-500/50' : 'bg-white dark:bg-[#111113] border-zinc-200 dark:border-emerald-500/20 shadow-sm'}`}>
+                                            <div class="flex justify-between items-center relative z-10">
+                                                <div class="space-y-6">
+                                                    <p class="text-[11px] font-bold uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-500">Calculator Output</p>
+                                                    <div class="grid grid-cols-2 gap-20">
+                                                        <div><p class="text-[10px] font-bold text-zinc-500 uppercase">SL Excl Fees</p><p class="text-4xl font-bold tracking-tighter text-zinc-900 dark:text-white">${formatCurrency(calculations.slExcl)}</p></div>
+                                                        <div><p class="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase">SL Incl Fees</p><p class=${`text-5xl font-bold tracking-tighter ${calculations.isHighRisk ? 'text-red-500' : 'text-zinc-900 dark:text-white'}`}>${formatCurrency(calculations.slIncl)}</p></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-center pt-20 pb-10">
+                                    <p class="text-[10px] font-bold uppercase tracking-[0.6em] text-zinc-400">By Roezillah</p>
+                                </div>
+                            ` : html`
+                                <div class="space-y-6">
+                                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                        <${StatCard} label="Total Trades" value=${logStats.total} icon="Layers" color="text-emerald-600 dark:text-emerald-500" sub="Logged entries" />
+                                        <div class="bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 p-5 rounded-2xl space-y-3 relative overflow-hidden shadow-sm">
+                                            <div class="flex justify-between items-center relative z-10">
+                                                <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Hitrate</span>
+                                                <div class="p-2 bg-zinc-100 dark:bg-white/5 rounded-lg border border-zinc-200 dark:border-white/5"><${Icon} name="Target" class="w-4 h-4 text-emerald-600 dark:text-emerald-500" /></div>
+                                            </div>
+                                            <div class="relative z-10">
+                                                <p class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">${logStats.winRate}%</p>
+                                                <div class="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+                                                    ${logStats.rrStats.map(s => html`<span class="text-[9px] font-bold text-zinc-500 uppercase">${s.label} <span class="text-emerald-600 dark:text-emerald-500">${s.rate}</span></span>`)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <${StatCard} label="Total PnL" value=${formatCurrency(stats.realizedPnL)} icon="TrendingUp" color=${stats.realizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-500'} sub="Net Performance" />
+                                        <div onClick=${() => handleAddClick()} class="bg-emerald-500 hover:bg-emerald-600 rounded-xl p-6 flex flex-col justify-between shadow-lg shadow-emerald-500/20 text-white cursor-pointer transition-all">
+                                            <span class="text-[10px] font-bold uppercase tracking-widest opacity-80 uppercase">Quick Action</span>
+                                            <div class="flex items-center justify-between mt-2">
+                                                <span class="text-base font-bold uppercase">Log Trade</span>
+                                                <${Icon} name="Plus" class="w-6 h-6" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
+                                        <div class="p-4 border-b-2 border-zinc-200 dark:border-white/5 flex justify-between items-center bg-zinc-50 dark:bg-white/[0.02]">
+                                            <h3 class="text-sm font-bold uppercase tracking-widest text-zinc-500">March 2026</h3>
+                                        </div>
+                                        <div class="grid grid-cols-7 text-center py-2 border-b-2 border-zinc-200 dark:border-white/5 bg-zinc-100 dark:bg-white/[0.01]">
+                                            ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => html`<div key=${d} class="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">${d}</div>`)}
+                                        </div>
+                                        <div class="grid grid-cols-7">
+                                            ${Array.from({length: 31}).map((_, i) => {
+                                                const dayNum = i + 1;
+                                                const dateStr = `2026-03-${String(dayNum).padStart(2, '0')}`;
+                                                const dayTrades = trades.filter(t => t.date === dateStr);
+                                                return html`
+                                                    <div key=${i} class="min-h-[120px] border-r-2 border-b-2 border-zinc-200 dark:border-white/5 relative group transition-colors flex flex-col overflow-hidden">
+                                                        <div class="h-8 p-2 flex justify-between items-center z-30 relative">
+                                                            <span class="text-[10px] font-bold text-zinc-400 dark:opacity-30">${dayNum}</span>
+                                                            <button onClick=${() => handleAddClick(dateStr)} class="p-1 hover:bg-emerald-500/20 rounded-md text-emerald-600 dark:text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <${Icon} name="Plus" class="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <div class="flex-1 flex flex-col w-full z-0 overflow-y-auto">
+                                                            ${dayTrades.map(t => html`
+                                                                <button onClick=${() => { setEditingTrade(t); setIsModalOpen(true); }} 
+                                                                    class=${`flex-1 min-h-[35px] w-full flex items-center px-3 transition-all uppercase text-[10px] font-bold border-b border-zinc-200 dark:border-white/5 last:border-b-0
+                                                                    ${t.outcome === 'Win' ? 'bg-emerald-50 dark:bg-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-400' : 
+                                                                    t.outcome === 'Loss' ? 'bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400' : 
+                                                                    'bg-blue-50 dark:bg-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/30 text-blue-700 dark:text-blue-400'}`}>
+                                                                    <div class="flex justify-between w-full pr-6">
+                                                                        <span class="truncate">${t.pair} ${t.direction[0]}</span>
+                                                                        <span class="opacity-70 whitespace-nowrap ml-1">${t.rr}</span>
+                                                                    </div>
+                                                                </button>
+                                                            `)}
+                                                        </div>
+                                                    </div>
+                                                `;
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            `}
+
+                            ${isModalOpen && html`
+                                <div class="fixed inset-0 bg-black/60 dark:bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center p-4 text-left">
+                                    <div class="bg-white dark:bg-[#0E0E10] border-2 border-zinc-300 dark:border-white/10 p-6 rounded-2xl w-full max-w-md space-y-6 shadow-2xl">
+                                        <div class="flex justify-between items-center">
+                                            <h3 class="font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-500">${editingTrade?.id ? 'Edit Trade' : 'LOG NEW TRADE'}</h3>
+                                            <button onClick=${() => setIsModalOpen(false)} class="text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"><${Icon} name="X" /></button>
+                                        </div>
+                                        <form onSubmit=${(e) => {
+                                            e.preventDefault();
+                                            const fd = new FormData(e.target);
+                                            const outcome = fd.get('outcome');
+                                            const rrValue = parseInt(fd.get('rr').split(':')[1]) || 1;
+                                            let pnl = (calculations.maxAllowedRisk * rrValue) - (outcome === 'Win' ? calculations.fees : -calculations.fees);
+                                            const payload = { id: editingTrade?.id || Date.now(), date: fd.get('date'), pair: fd.get('pair').toUpperCase(), direction: fd.get('direction'), outcome, rr: fd.get('rr'), amount: pnl };
+                                            if (editingTrade?.id) setTrades(trades.map(t => t.id === editingTrade.id ? payload : t));
+                                            else setTrades([...trades, payload]);
+                                            setIsModalOpen(false);
+                                        }} class="space-y-4">
+                                            <div class="space-y-1"><label class="text-[10px] font-bold text-zinc-500 uppercase pl-1">Trade Date</label><input name="date" type="date" defaultValue=${editingTrade?.date} required /></div>
+                                            <div class="space-y-1"><label class="text-[10px] font-bold text-zinc-500 uppercase pl-1">Asset Pair</label><input name="pair" type="text" defaultValue=${editingTrade?.pair} placeholder="BTC / NASDAQ" required class="uppercase" /></div>
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <div class="space-y-1"><label class="text-[10px] font-bold text-zinc-500 uppercase pl-1">Direction</label><select name="direction" defaultValue=${editingTrade?.direction}><option value="Long">LONG</option><option value="Short">SHORT</option></select></div>
+                                                <div class="space-y-1"><label class="text-[10px] font-bold text-zinc-500 uppercase pl-1">RR</label><select name="rr" defaultValue=${editingTrade?.rr}><option value="1:1">1:1</option><option value="1:2">1:2</option><option value="1:3">1:3</option><option value="1:4">1:4</option><option value="1:5">1:5</option></select></div>
+                                            </div>
+                                            <div class="space-y-1"><label class="text-[10px] font-bold text-zinc-500 uppercase pl-1">Status</label><select name="outcome" defaultValue=${editingTrade?.outcome}><option value="Active">ACTIVE</option><option value="Win">WIN</option><option value="Loss">LOSS</option></select></div>
+                                            <div class="flex gap-3 pt-2">
+                                                ${editingTrade?.id && html`<button type="button" onClick=${() => { if(confirm('Delete trade?')) { setTrades(trades.filter(t => t.id !== editingTrade.id)); setIsModalOpen(false); } }} class="flex-1 bg-red-500/10 text-red-600 border-2 border-red-500/20 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-red-100 transition-all">Delete</button>`}
+                                                <button type="submit" class="flex-[2] bg-emerald-500 py-4 rounded-xl font-bold uppercase tracking-widest text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all">SAVE TRADE</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            `}
+                        </div>
+                    `;
+                }
+
+                function InputGroup({ label, value, onChange, suffix, disabled }) {
+                    return html`<div class="space-y-1.5"><label class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest pl-1">${label}</label><div class="relative"><input type="number" value=${value} onChange=${(e) => onChange && onChange(parseFloat(e.target.value) || 0)} disabled=${disabled} class=${disabled ? 'opacity-60 cursor-not-allowed' : ''} />${suffix && html`<span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-zinc-400 dark:text-zinc-600">${suffix}</span>`}</div></div>`;
+                }
+
+                function StatCard({ label, value, icon, color, sub }) {
+                    return html`<div class="bg-white dark:bg-[#111113] border-2 border-zinc-200 dark:border-white/5 p-5 rounded-2xl space-y-3 relative group transition-colors shadow-sm"><div class="flex justify-between items-center relative z-10"><span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">${label}</span><div class="p-2 bg-zinc-100 dark:bg-white/5 rounded-lg border border-zinc-200 dark:border-white/5"><${Icon} name=${icon} class=${`w-4 h-4 ${color}`} /></div></div><div class="space-y-1 relative z-10"><p class="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">${value}</p><p class="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">${sub}</p></div></div>`;
+                }
+
+                function DataRow({ label, value, subValue }) {
+                    return html`<div class="py-4 flex justify-between items-center text-zinc-900 dark:text-white"><div><p class="text-sm font-bold text-zinc-700 dark:text-zinc-300">${label}</p><p class="text-[10px] text-zinc-500">${subValue}</p></div><span class="text-sm font-bold">${value}</span></div>`;
+                }
+
+                ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+            }
+        })();
+    </script>
+</body>
+</html>
